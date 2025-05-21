@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mob_lab_manger/app/bloc/theme_bloc.dart';
-import 'package:mob_lab_manger/app/bloc/connectivity/connectivity_bloc.dart';
+import 'package:mob_lab_manger/app/bloc/connectivity/connectivity_bloc.dart'; // Ensure this path is correct
 
 // This function will be called by screens with their own context
-void showCustomNoInternetDialog(BuildContext screenContext) {
+// Explicitly define the return type as Future<void>
+Future<void> showCustomNoInternetDialog(BuildContext screenContext) {
   debugPrint(
       '[NoInternetDialog] Attempting to show dialog using screenContext.');
 
@@ -15,7 +16,9 @@ void showCustomNoInternetDialog(BuildContext screenContext) {
   final titleColor = isDarkMode ? Colors.white : Colors.black87;
   final buttonColor = Theme.of(screenContext).colorScheme.primary;
 
-  showDialog<void>(
+  // showDialog returns a Future<T?>, where T is void in this case.
+  // So, we return this Future.
+  return showDialog<void>(
     context: screenContext, // Use the passed screenContext
     barrierDismissible: false,
     builder: (BuildContext dialogContext) {
@@ -62,9 +65,11 @@ void showCustomNoInternetDialog(BuildContext screenContext) {
               onPressed: () {
                 debugPrint(
                     '[NoInternetDialog - Retry Button] Pressed. Adding ConnectivityManuallyChecked event.');
-                // Use dialogContext to find the BLoC, as it's part of the dialog's tree
                 BlocProvider.of<ConnectivityBloc>(dialogContext)
                     .add(ConnectivityManuallyChecked());
+                // The dialog should be dismissed by the BlocListener in RoleSelectionScreen
+                // when the connectivity state changes to connected.
+                // Do not pop it here directly unless that's the desired flow on retry regardless of outcome.
               },
             ),
           ],
