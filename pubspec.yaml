@@ -18,6 +18,10 @@ dependencies:
   connectivity_plus: ^6.1.4
   internet_connection_checker: ^3.0.1
   flutter_bloc: ^9.1.1
+  image_picker: ^1.1.2
+  permission_handler: ^12.0.0+1
+  device_info_plus: ^11.4.0
+  country_picker: ^2.0.27
 
 dev_dependencies:
   flutter_test:
@@ -48,3 +52,7 @@ flutter:
     - assets/splash/mobile_repair_icon.png
     - assets/splash/mobile_repair_icon_native.png
     - assets/splash/mobile_repair_icon_native_android12.png
+    - assets/logos/mobile_repair_logo.png # <-- NEW LOGO ASSET
+    # social icons if you have them as local assets, e.g.:
+    - assets/icons/google_logo.png
+    - assets/icons/facebook_logo.png 

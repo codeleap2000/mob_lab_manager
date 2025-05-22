@@ -6,37 +6,48 @@ import 'package:mob_lab_manger/app/navigation/app_router.dart';
 import 'package:mob_lab_manger/app/widgets/custom_elevated_button.dart';
 import 'package:mob_lab_manger/app/widgets/custom_text_form_field.dart';
 import 'package:mob_lab_manger/app/widgets/gradient_logo.dart';
-import 'package:mob_lab_manger/app/widgets/social_login_buttons.dart';
 import 'package:mob_lab_manger/app/widgets/staggered_entrance_animation.dart';
-import 'package:mob_lab_manger/app/widgets/theme_toggle_button.dart';
 import 'package:mob_lab_manger/app/widgets/auth_bottom_action_link.dart';
 import 'package:mob_lab_manger/app/bloc/connectivity/connectivity_bloc.dart';
 import 'package:mob_lab_manger/app/widgets/no_internet_dialog.dart';
+import 'package:mob_lab_manger/features/auth/domain/entities/password_validation_result.dart';
+import 'package:mob_lab_manger/features/auth/presentation/widgets/password_conditions_widget.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class SignupScreen extends StatefulWidget {
+  const SignupScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
   final FocusNode _emailFocusNode = FocusNode();
   final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _confirmPasswordFocusNode = FocusNode();
 
   bool _isDialogShowing = false;
-  bool _isLoggingIn = false;
-  bool _isPasswordObscured = true; // State for password visibility
+  bool _isSigningUp = false;
+  bool _showPasswordConditions = false;
+  String _currentPassword = "";
+
+  bool _isPasswordObscured = true; // For Password field
+  bool _isConfirmPasswordObscured = true; // For Confirm Password field
+
+  late List<PasswordValidationRule> _passwordRules;
 
   @override
   void initState() {
     super.initState();
+    _setupPasswordRules();
     _emailFocusNode.addListener(_onFocusChange);
-    _passwordFocusNode.addListener(_onFocusChange);
+    _passwordFocusNode.addListener(_onPasswordFocusChange);
+    _confirmPasswordFocusNode.addListener(_onFocusChange);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<ConnectivityBloc>().add(ConnectivityManuallyChecked());
@@ -44,15 +55,40 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _emailFocusNode.removeListener(_onFocusChange);
-    _passwordFocusNode.removeListener(_onFocusChange);
-    _emailFocusNode.dispose();
-    _passwordFocusNode.dispose();
-    super.dispose();
+  void _setupPasswordRules() {
+    _passwordRules = [
+      PasswordValidationRule(
+          description: 'At least 8 characters',
+          validator: (p) => p.length >= 8),
+      PasswordValidationRule(
+          description: 'One uppercase letter (A-Z)',
+          validator: (p) => p.contains(RegExp(r'[A-Z]'))),
+      PasswordValidationRule(
+          description: 'One lowercase letter (a-z)',
+          validator: (p) => p.contains(RegExp(r'[a-z]'))),
+      PasswordValidationRule(
+          description: 'One number (0-9)',
+          validator: (p) => p.contains(RegExp(r'[0-9]'))),
+      PasswordValidationRule(
+          description: 'One special character (!@#\$%^&*)',
+          validator: (p) => p.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))),
+    ];
+  }
+
+  void _onPasswordFocusChange() {
+    if (mounted) {
+      setState(() {
+        _showPasswordConditions = _passwordFocusNode.hasFocus;
+      });
+    }
+  }
+
+  void _onPasswordChanged(String password) {
+    if (mounted) {
+      setState(() {
+        _currentPassword = password;
+      });
+    }
   }
 
   void _onFocusChange() {
@@ -61,12 +97,37 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _performLogin() async {
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _emailFocusNode.removeListener(_onFocusChange);
+    _passwordFocusNode.removeListener(_onPasswordFocusChange);
+    _confirmPasswordFocusNode.removeListener(_onFocusChange);
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _performSignup() async {
     if (!_formKey.currentState!.validate()) {
+      if (mounted) setState(() {});
       return;
     }
+    bool allRulesMet = _passwordRules
+        .every((rule) => rule.validator(_passwordController.text));
+    if (!allRulesMet) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please meet all password requirements.')),
+      );
+      if (mounted) setState(() {});
+      return;
+    }
+
     if (!mounted) return;
-    setState(() => _isLoggingIn = true);
+    setState(() => _isSigningUp = true);
 
     context.read<ConnectivityBloc>().add(ConnectivityManuallyChecked());
     Stream<ConnectivityState> blocStream =
@@ -77,25 +138,28 @@ class _LoginScreenState extends State<LoginScreen> {
           .firstWhere((state) => state.status != AppConnectionStatus.loading);
     } catch (e) {
       debugPrint("Error waiting for connectivity state: $e");
-      if (mounted) setState(() => _isLoggingIn = false);
+      if (mounted) setState(() => _isSigningUp = false);
       _showDialogIfNeeded();
       return;
     }
 
     if (!mounted) return;
     if (connectivityState.status != AppConnectionStatus.connected) {
-      setState(() => _isLoggingIn = false);
+      setState(() => _isSigningUp = false);
       _showDialogIfNeeded();
       return;
     }
 
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 1));
+
     if (!mounted) return;
-    setState(() => _isLoggingIn = false);
+    setState(() => _isSigningUp = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Login attempt for: ${_emailController.text}')),
+      SnackBar(content: Text('OTP sent to: ${_emailController.text}')),
     );
+
+    context.pushNamed(AppRoutes.otpVerification, extra: _emailController.text);
   }
 
   void _showDialogIfNeeded() {
@@ -148,18 +212,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: isDarkMode ? Colors.black : Colors.grey[300]);
                 },
               ),
-              const Positioned(
-                top: kToolbarHeight - 20,
-                right: 10,
-                child: ThemeToggleButton(
-                  containerPadding: EdgeInsets.all(4),
-                  iconSize: 24,
-                ),
-              ),
               Center(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0, vertical: 20.0),
+                      horizontal: 24.0, vertical: 40.0),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 380),
                     child: Card(
@@ -171,7 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           .withAlpha(isDarkMode ? 235 : 250),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 20.0, vertical: 24.0),
+                            horizontal: 20.0, vertical: 28.0),
                         child: Form(
                           key: _formKey,
                           autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -184,34 +240,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: const GradientLogo(
                                   logoAssetPath:
                                       'assets/logos/mobile_repair_logo.png',
-                                  height: 55,
-                                  width: 55,
+                                  height: 50,
+                                  width: 50,
                                 ),
                               ),
                               StaggeredEntranceAnimation(
                                 delay:
                                     initialDelay + staggerStep * staggerIndex++,
                                 child: Padding(
-                                  padding: const EdgeInsets.only(top: 12.0),
+                                  padding: const EdgeInsets.only(top: 16.0),
                                   child: Text(
-                                    'Welcome to My Lab',
+                                    'Create Your Account',
                                     style: textTheme.headlineSmall
                                         ?.copyWith(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                              StaggeredEntranceAnimation(
-                                delay:
-                                    initialDelay + staggerStep * staggerIndex++,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 4.0),
-                                  child: Text(
-                                    'Please login to your account',
-                                    style: textTheme.bodyLarge?.copyWith(
-                                      color: isDarkMode
-                                          ? Colors.grey[400]
-                                          : Colors.grey[700],
-                                    ),
                                   ),
                                 ),
                               ),
@@ -229,13 +270,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                     keyboardType: TextInputType.emailAddress,
                                     enforceGmail: true,
                                     validator: (value) {
-                                      if (value == null || value.isEmpty) {
+                                      if (value == null || value.isEmpty)
                                         return 'Please enter your email';
-                                      }
                                       if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                                          .hasMatch(value)) {
-                                        return 'Please enter a valid email format';
-                                      }
+                                          .hasMatch(value))
+                                        return 'Invalid email format';
                                       return null;
                                     },
                                   ),
@@ -245,7 +284,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 delay:
                                     initialDelay + staggerStep * staggerIndex++,
                                 child: Padding(
-                                  padding: const EdgeInsets.only(top: 12.0),
+                                  padding: const EdgeInsets.only(top: 16.0),
                                   child: CustomTextFormField(
                                     controller: _passwordController,
                                     focusNode: _passwordFocusNode,
@@ -253,9 +292,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                     hintText: 'Password',
                                     prefixIcon: Icons.lock_outline_rounded,
                                     obscureText:
-                                        _isPasswordObscured, // Use state variable
+                                        _isPasswordObscured, // Use state
+                                    onChanged: _onPasswordChanged,
                                     suffixIconWidget: IconButton(
-                                      // Add toggle button
+                                      // Add toggle
                                       icon: Icon(
                                         _isPasswordObscured
                                             ? Icons.visibility_off_outlined
@@ -271,9 +311,72 @@ class _LoginScreenState extends State<LoginScreen> {
                                       },
                                     ),
                                     validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter your password';
-                                      }
+                                      if (value == null || value.isEmpty)
+                                        return 'Please enter a password';
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                              ),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                transitionBuilder: (Widget child,
+                                    Animation<double> animation) {
+                                  return SizeTransition(
+                                    sizeFactor: animation,
+                                    axisAlignment: -1.0,
+                                    child: FadeTransition(
+                                        opacity: animation, child: child),
+                                  );
+                                },
+                                child: _showPasswordConditions
+                                    ? StaggeredEntranceAnimation(
+                                        key: const ValueKey(
+                                            'password_conditions'),
+                                        delay: Duration.zero,
+                                        child: PasswordConditionsWidget(
+                                          rules: _passwordRules,
+                                          currentPassword: _currentPassword,
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(
+                                        key: ValueKey('empty_conditions')),
+                              ),
+                              StaggeredEntranceAnimation(
+                                delay:
+                                    initialDelay + staggerStep * staggerIndex++,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 16.0),
+                                  child: CustomTextFormField(
+                                    controller: _confirmPasswordController,
+                                    focusNode: _confirmPasswordFocusNode,
+                                    isFocused:
+                                        _confirmPasswordFocusNode.hasFocus,
+                                    hintText: 'Confirm Password',
+                                    prefixIcon: Icons.lock_outline_rounded,
+                                    obscureText:
+                                        _isConfirmPasswordObscured, // Use state
+                                    suffixIconWidget: IconButton(
+                                      // Add toggle
+                                      icon: Icon(
+                                        _isConfirmPasswordObscured
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        color:
+                                            colorScheme.primary.withAlpha(200),
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _isConfirmPasswordObscured =
+                                              !_isConfirmPasswordObscured;
+                                        });
+                                      },
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty)
+                                        return 'Please confirm your password';
+                                      if (value != _passwordController.text)
+                                        return 'Passwords do not match';
                                       return null;
                                     },
                                   ),
@@ -283,50 +386,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 delay:
                                     initialDelay + staggerStep * staggerIndex++,
                                 child: Padding(
-                                  padding: const EdgeInsets.only(top: 16.0),
+                                  padding: const EdgeInsets.only(top: 24.0),
                                   child: SizedBox(
                                     width: double.infinity,
                                     child: CustomElevatedButton(
-                                      text: 'Log in',
-                                      isLoading: _isLoggingIn,
+                                      text: 'Sign Up',
+                                      isLoading: _isSigningUp,
                                       onPressed:
-                                          _isLoggingIn ? null : _performLogin,
+                                          _isSigningUp ? null : _performSignup,
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              StaggeredEntranceAnimation(
-                                delay:
-                                    initialDelay + staggerStep * staggerIndex++,
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 4.0),
-                                    child: TextButton(
-                                      onPressed: () {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text(
-                                                  'Forgot Password clicked (Not Implemented)')),
-                                        );
-                                      },
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 4, horizontal: 0),
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      child: Text(
-                                        'Forgot password?',
-                                        style: TextStyle(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary),
-                                      ),
+                                          vertical: 14),
                                     ),
                                   ),
                                 ),
@@ -335,37 +404,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 delay:
                                     initialDelay + staggerStep * staggerIndex++,
                                 child: Padding(
-                                  padding: const EdgeInsets.only(top: 12.0),
-                                  child: SocialLoginButtons(
-                                    onGoogleLogin: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Google Login clicked (Not Implemented)')),
-                                      );
-                                    },
-                                    onFacebookLogin: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Facebook Login clicked (Not Implemented)')),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                              StaggeredEntranceAnimation(
-                                delay:
-                                    initialDelay + staggerStep * staggerIndex++,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 16.0),
+                                  padding: const EdgeInsets.only(top: 20.0),
                                   child: AuthBottomActionLink(
-                                    leadingText: "Don't have an account?",
-                                    actionText: 'Sign up',
+                                    leadingText: "Already have an account?",
+                                    actionText: 'Log in',
                                     onActionPressed: () {
-                                      context.push(AppRoutes.signup);
+                                      if (context.canPop()) {
+                                        context.pop();
+                                      } else {
+                                        context.go(AppRoutes.login);
+                                      }
                                     },
                                   ),
                                 ),

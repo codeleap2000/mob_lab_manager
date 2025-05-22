@@ -6,8 +6,10 @@ import 'package:mob_lab_manger/app/bloc/theme_bloc.dart';
 import 'package:mob_lab_manger/app/bloc/connectivity/connectivity_bloc.dart';
 import 'package:mob_lab_manger/app/navigation/app_router.dart';
 import 'package:mob_lab_manger/app/theme/app_theme.dart';
-// No longer importing global_no_internet_dialog.dart here as it's managed by screens
 import 'package:mob_lab_manger/core/network/network_info.dart';
+import 'package:mob_lab_manger/features/profile/presentation/bloc/profile_completion_bloc.dart'; // New Import
+// SplashBloc is no longer used
+// import 'package:mob_lab_manger/features/splash/presentation/bloc/splash_bloc.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,9 +46,13 @@ class MobLabMangerApp extends StatelessWidget {
               networkInfo: RepositoryProvider.of<NetworkInfo>(context),
             );
           }),
+          BlocProvider(// Provide ProfileCompletionBloc
+              create: (context) {
+            debugPrint('[MobLabMangerApp] Creating ProfileCompletionBloc...');
+            return ProfileCompletionBloc();
+          }),
         ],
-        // Global BlocListener for ConnectivityBloc has been REMOVED.
-        // Each screen will handle its own dialog presentation.
+        // Assuming each screen handles its own internet dialog now
         child: BlocBuilder<ThemeBloc, ThemeState>(
           builder: (context, themeState) {
             debugPrint(

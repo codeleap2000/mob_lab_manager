@@ -49,5 +49,17 @@
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+
+		<!-- Permissions -->
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>This app needs access to your photo library to select a profile picture.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>This app needs access to your camera to take a profile picture.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>This app needs access to your microphone if you intend to record video for profile (though not used for image picker).</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>This app needs access to your location to select your address on the map.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>This app needs access to your location to select your address on the map.</string>
 	</dict>
 </plist>
