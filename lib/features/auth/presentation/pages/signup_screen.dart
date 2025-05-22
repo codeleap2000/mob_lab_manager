@@ -8,10 +8,11 @@ import 'package:mob_lab_manger/app/widgets/custom_text_form_field.dart';
 import 'package:mob_lab_manger/app/widgets/gradient_logo.dart';
 import 'package:mob_lab_manger/app/widgets/staggered_entrance_animation.dart';
 import 'package:mob_lab_manger/app/widgets/auth_bottom_action_link.dart';
-import 'package:mob_lab_manger/app/bloc/connectivity/connectivity_bloc.dart';
+import 'package:mob_lab_manger/app/bloc/connectivity/connectivity_bloc.dart'; // For internet check
 import 'package:mob_lab_manger/app/widgets/no_internet_dialog.dart';
 import 'package:mob_lab_manger/features/auth/domain/entities/password_validation_result.dart';
 import 'package:mob_lab_manger/features/auth/presentation/widgets/password_conditions_widget.dart';
+import 'package:mob_lab_manger/features/auth/presentation/bloc/auth_bloc.dart'; // Import AuthBloc
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -30,13 +31,13 @@ class _SignupScreenState extends State<SignupScreen> {
   final FocusNode _passwordFocusNode = FocusNode();
   final FocusNode _confirmPasswordFocusNode = FocusNode();
 
-  bool _isDialogShowing = false;
-  bool _isSigningUp = false;
+  bool _isNoInternetDialogShowing = false;
+  // bool _isSigningUp = false; // Now handled by AuthBloc's state
   bool _showPasswordConditions = false;
   String _currentPassword = "";
 
-  bool _isPasswordObscured = true; // For Password field
-  bool _isConfirmPasswordObscured = true; // For Confirm Password field
+  bool _isPasswordObscured = true;
+  bool _isConfirmPasswordObscured = true;
 
   late List<PasswordValidationRule> _passwordRules;
 
@@ -50,7 +51,8 @@ class _SignupScreenState extends State<SignupScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        context.read<ConnectivityBloc>().add(ConnectivityManuallyChecked());
+        // Initial internet check (can be removed if AuthBloc/actions handle it)
+        // context.read<ConnectivityBloc>().add(ConnectivityManuallyChecked());
       }
     });
   }
@@ -111,7 +113,11 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  Future<void> _performSignup() async {
+  void _triggerSignup() {
+    // Renamed from _performSignup
+    // Dismiss keyboard
+    FocusScope.of(context).unfocus();
+
     if (!_formKey.currentState!.validate()) {
       if (mounted) setState(() {});
       return;
@@ -126,54 +132,35 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    if (!mounted) return;
-    setState(() => _isSigningUp = true);
-
-    context.read<ConnectivityBloc>().add(ConnectivityManuallyChecked());
-    Stream<ConnectivityState> blocStream =
-        context.read<ConnectivityBloc>().stream;
-    ConnectivityState connectivityState;
-    try {
-      connectivityState = await blocStream
-          .firstWhere((state) => state.status != AppConnectionStatus.loading);
-    } catch (e) {
-      debugPrint("Error waiting for connectivity state: $e");
-      if (mounted) setState(() => _isSigningUp = false);
-      _showDialogIfNeeded();
-      return;
-    }
-
-    if (!mounted) return;
+    final connectivityState = context.read<ConnectivityBloc>().state;
     if (connectivityState.status != AppConnectionStatus.connected) {
-      setState(() => _isSigningUp = false);
-      _showDialogIfNeeded();
+      _showNoInternetDialogIfNeeded();
       return;
     }
 
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!mounted) return;
-    setState(() => _isSigningUp = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('OTP sent to: ${_emailController.text}')),
-    );
-
-    context.pushNamed(AppRoutes.otpVerification, extra: _emailController.text);
+    // Dispatch event to AuthBloc
+    context.read<AuthBloc>().add(SignupWithFirebaseRequested(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        ));
   }
 
-  void _showDialogIfNeeded() {
-    if (!mounted || _isDialogShowing) return;
-    setState(() => _isDialogShowing = true);
-    showCustomNoInternetDialog(context).then((_) {
-      if (mounted) setState(() => _isDialogShowing = false);
-    });
+  void _showNoInternetDialogIfNeeded() {
+    if (!mounted || _isNoInternetDialogShowing) return;
+    // Check current connectivity state one last time before showing
+    final currentConnectivity = context.read<ConnectivityBloc>().state.status;
+    if (currentConnectivity == AppConnectionStatus.disconnected) {
+      setState(() => _isNoInternetDialogShowing = true);
+      showCustomNoInternetDialog(context).then((_) {
+        if (mounted) setState(() => _isNoInternetDialogShowing = false);
+      });
+    }
   }
 
-  void _dismissDialogIfNeeded() {
-    if (mounted && _isDialogShowing) {
+  void _dismissNoInternetDialogIfNeeded() {
+    if (mounted && _isNoInternetDialogShowing) {
       if (Navigator.of(context).canPop()) Navigator.of(context).pop();
-      _isDialogShowing = false;
+      // No need to setState here, .then in _showNoInternetDialogIfNeeded handles it
     }
   }
 
@@ -190,14 +177,41 @@ class _SignupScreenState extends State<SignupScreen> {
 
     return PopScope(
       canPop: true,
-      child: BlocListener<ConnectivityBloc, ConnectivityState>(
-        listener: (listenerContext, state) {
-          if (state.status == AppConnectionStatus.disconnected) {
-            _showDialogIfNeeded();
-          } else if (state.status == AppConnectionStatus.connected) {
-            _dismissDialogIfNeeded();
-          }
-        },
+      child: MultiBlocListener(
+        listeners: [
+          BlocListener<ConnectivityBloc, ConnectivityState>(
+            listener: (context, state) {
+              debugPrint(
+                  '[SignupScreen - Listener] Connectivity State: ${state.status}');
+              if (state.status == AppConnectionStatus.disconnected) {
+                _showNoInternetDialogIfNeeded();
+              } else if (state.status == AppConnectionStatus.connected) {
+                _dismissNoInternetDialogIfNeeded();
+              }
+            },
+          ),
+          BlocListener<AuthBloc, AuthState>(
+            listener: (context, state) {
+              if (state.status == AuthStatus.failure &&
+                  state.errorMessage != null) {
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(
+                      content: Text(state.errorMessage!),
+                      backgroundColor: Theme.of(context).colorScheme.error));
+              } else if (state.status == AuthStatus.customOtpSent) {
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(
+                      content:
+                          Text('OTP sent to: ${state.emailForOtpScreen}')));
+                // Navigate to OTP screen, passing the email
+                context.pushNamed(AppRoutes.otpVerification,
+                    extra: state.emailForOtpScreen);
+              }
+            },
+          ),
+        ],
         child: Scaffold(
           body: Stack(
             fit: StackFit.expand,
@@ -212,6 +226,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       color: isDarkMode ? Colors.black : Colors.grey[300]);
                 },
               ),
+              // No ThemeToggleButton as per your request for this screen
               Center(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(
@@ -291,11 +306,9 @@ class _SignupScreenState extends State<SignupScreen> {
                                     isFocused: _passwordFocusNode.hasFocus,
                                     hintText: 'Password',
                                     prefixIcon: Icons.lock_outline_rounded,
-                                    obscureText:
-                                        _isPasswordObscured, // Use state
+                                    obscureText: _isPasswordObscured,
                                     onChanged: _onPasswordChanged,
                                     suffixIconWidget: IconButton(
-                                      // Add toggle
                                       icon: Icon(
                                         _isPasswordObscured
                                             ? Icons.visibility_off_outlined
@@ -303,16 +316,14 @@ class _SignupScreenState extends State<SignupScreen> {
                                         color:
                                             colorScheme.primary.withAlpha(200),
                                       ),
-                                      onPressed: () {
-                                        setState(() {
+                                      onPressed: () => setState(() =>
                                           _isPasswordObscured =
-                                              !_isPasswordObscured;
-                                        });
-                                      },
+                                              !_isPasswordObscured),
                                     ),
                                     validator: (value) {
                                       if (value == null || value.isEmpty)
                                         return 'Please enter a password';
+                                      // Final validation of rules is done in _triggerSignup
                                       return null;
                                     },
                                   ),
@@ -354,10 +365,8 @@ class _SignupScreenState extends State<SignupScreen> {
                                         _confirmPasswordFocusNode.hasFocus,
                                     hintText: 'Confirm Password',
                                     prefixIcon: Icons.lock_outline_rounded,
-                                    obscureText:
-                                        _isConfirmPasswordObscured, // Use state
+                                    obscureText: _isConfirmPasswordObscured,
                                     suffixIconWidget: IconButton(
-                                      // Add toggle
                                       icon: Icon(
                                         _isConfirmPasswordObscured
                                             ? Icons.visibility_off_outlined
@@ -365,12 +374,9 @@ class _SignupScreenState extends State<SignupScreen> {
                                         color:
                                             colorScheme.primary.withAlpha(200),
                                       ),
-                                      onPressed: () {
-                                        setState(() {
+                                      onPressed: () => setState(() =>
                                           _isConfirmPasswordObscured =
-                                              !_isConfirmPasswordObscured;
-                                        });
-                                      },
+                                              !_isConfirmPasswordObscured),
                                     ),
                                     validator: (value) {
                                       if (value == null || value.isEmpty)
@@ -387,16 +393,27 @@ class _SignupScreenState extends State<SignupScreen> {
                                     initialDelay + staggerStep * staggerIndex++,
                                 child: Padding(
                                   padding: const EdgeInsets.only(top: 24.0),
-                                  child: SizedBox(
-                                    width: double.infinity,
-                                    child: CustomElevatedButton(
-                                      text: 'Sign Up',
-                                      isLoading: _isSigningUp,
-                                      onPressed:
-                                          _isSigningUp ? null : _performSignup,
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 14),
-                                    ),
+                                  child: BlocBuilder<AuthBloc, AuthState>(
+                                    builder: (context, authState) {
+                                      final isLoading = authState.status ==
+                                              AuthStatus.loading ||
+                                          authState.status ==
+                                              AuthStatus
+                                                  .firebaseSignupSuccess ||
+                                          authState.status ==
+                                              AuthStatus.customOtpSending;
+                                      return SizedBox(
+                                        width: double.infinity,
+                                        child: CustomElevatedButton(
+                                          text: 'Sign Up',
+                                          isLoading: isLoading,
+                                          onPressed:
+                                              isLoading ? null : _triggerSignup,
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 14),
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "713285850804",
+    "project_id": "moblabmanger",
+    "storage_bucket": "moblabmanger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:713285850804:android:19251c70652daedbede9e1",
+        "android_client_info": {
+          "package_name": "com.example.mob_lab_manger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBU6GY-nRWoEIbnVd5r95PYsTpcgHxjuI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
